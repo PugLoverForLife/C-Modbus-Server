@@ -9,11 +9,9 @@ using namespace std;
 
 int main()
 {
-	printf("Hello world!");
-	return 0;
-	/*
-	string ipAddress = "127.0.0.1";			// IP Address of the server
-	int port = 54000;						// Listening port # on the server
+	
+	//string ipAddress = "0.0.0.0";			// IP Address of the server
+	int port = 502;						// Listening port # on the server
 
 	// Initialize WinSock
 	WSAData data;
@@ -26,8 +24,8 @@ int main()
 	}
 
 	// Create socket
-	SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
-	if (sock == INVALID_SOCKET)
+	SOCKET listening = socket(AF_INET, SOCK_STREAM, 0);
+	if (listening == INVALID_SOCKET)
 	{
 		cerr << "Can't create socket, Err #" << WSAGetLastError() << endl;
 		WSACleanup();
@@ -38,51 +36,97 @@ int main()
 	sockaddr_in hint;
 	hint.sin_family = AF_INET;
 	hint.sin_port = htons(port);
-	//inet_pton(AF_INET, ipAddress.c_str(), &hint.sin_addr);
+	hint.sin_addr.S_un.S_addr = INADDR_ANY; //inet_pton(AF_INET, ipAddress.c_str(), &hint.sin_addr);
 
-	// Connect to server
-	int connResult = connect(sock, (sockaddr*)&hint, sizeof(hint));
-	if (connResult == SOCKET_ERROR)
+	bind(listening, (sockaddr*)&hint, sizeof(hint));
+
+	// Tell Winsick the socket is for listening 
+	listen(listening, SOMAXCONN);
+
+	// Wait for a connection
+	sockaddr_in client;
+	int clientSize = sizeof(client);
+
+	SOCKET clientSocket = accept(listening, (sockaddr*)&client, &clientSize);
+	if (clientSize == INVALID_SOCKET) 
 	{
-		cerr << "Can't connect to server, Err #" << WSAGetLastError() << endl;
-		closesocket(sock);
+		cerr << "Can't create client socket, Err #" << WSAGetLastError() << endl;
 		WSACleanup();
 		return 0;
 	}
 
-	// Do-while loop to send and receive data
-	char buf[4096];
-	string userInput;
+	char host[NI_MAXHOST];		// Client's remote name
+	char service[NI_MAXHOST];	// Service (i.e. port) the client is connected on
 
-	do
+	ZeroMemory(host, NI_MAXHOST);
+	ZeroMemory(service, NI_MAXSERV);
+
+	if (getnameinfo((sockaddr*)&client, sizeof(client), host, NI_MAXHOST, service, NI_MAXSERV, 0) == 0)
 	{
-		// Prompt the user for some text
-		cout << "> ";
-		getline(cin, userInput);
+		cout << host << " connected on port " << service << endl;
+	}
+	else
+	{
+		inet_ntop(AF_INET, &client.sin_addr, host, NI_MAXHOST);
+		cout << host << " connected on port " <<
+			ntohs(client.sin_port) << endl;
+	}
 
-		if (userInput.size() > 0)		// Make sure the user has typed in something
+	// Close listening socket
+	closesocket(listening); // Can remove later
+
+	// While loop: accept and echo message back to client
+	char buffer[4096];
+	string message;
+	int command;
+
+	while (true)
+	{
+		ZeroMemory(buffer, 4096);
+
+		// Wait for client to send data
+		int bytesReceived = recv(clientSocket, buffer, 4096, 0);
+		if (bytesReceived == SOCKET_ERROR)
 		{
-			// Send the text
-			int sendResult = send(sock, userInput.c_str(), userInput.size() + 1, 0);
-			if (sendResult != SOCKET_ERROR)
+			cerr << "Error in recv(). Quitting..." << endl;
+		}
+
+		else if (bytesReceived == 0)
+		{
+			cout << "Client disconnected " << endl;
+			break;
+		}
+
+		// Echo message back to client
+		//send(clientSocket, buffer, bytesReceived + 1, 0);
+		
+		if ((int)buffer[0] != 13)
+		{
+			message = buffer;
+			cout << "Message recieved: " << message << endl;
+			command = buffer[6] - '0';
+			cout << command << endl;
+			switch (command)
 			{
-				// Wait for response
-				ZeroMemory(buf, 4096);
-				int bytesReceived = recv(sock, buf, 4096, 0);
-				if (bytesReceived > 0)
-				{
-					// Echo response to console
-					cout << "SERVER> " << string(buf, 0, bytesReceived) << endl;
-				}
+			case 1:
+				cout << "Homing Shuttle" << endl;
+				break;
+			case 2:
+				cout << "Homing Flipper" << endl;
+				break;
+			default:
+				break;
 			}
 		}
-	
-	} while (userInput.size() > 0);
+		
+	}
 
-	// Gracefully close down everything
-	closesocket(sock);
+	// Close the socket
+	closesocket(clientSocket);
+
+	// Cleanup winsock
 	WSACleanup();
 
-    return 0;
-	*/
+	return 0;
+	
 }
